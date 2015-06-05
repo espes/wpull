@@ -470,6 +470,12 @@ class AppArgumentParser(argparse.ArgumentParser):
             type=argparse.FileType('wb'),
             help=_('stream every document into FILE'),
         )
+        group.add_argument(
+            '--zip',
+            metavar='FILE',
+            type=argparse.FileType('wb'),
+            help=_('stream a zip into FILE'),
+        )
         clobber_group = group.add_mutually_exclusive_group()
         clobber_group.add_argument(
             '-nc',

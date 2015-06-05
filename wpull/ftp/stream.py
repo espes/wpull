@@ -54,7 +54,7 @@ class DataStream(object):
             file_is_async = hasattr(file, 'drain')
 
         while True:
-            data = yield From(self._connection.read(4096))
+            data = yield From(self._connection.read(4096*128))
 
             if not data:
                 break

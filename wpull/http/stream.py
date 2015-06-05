@@ -56,7 +56,7 @@ class Stream(object):
         self._keep_alive = keep_alive
         self._ignore_length = ignore_length
         self._data_observer = Observer()
-        self._read_size = 4096
+        self._read_size = 4096*128
         self._decompressor = None
 
     @property

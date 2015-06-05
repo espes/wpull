@@ -60,6 +60,7 @@ from wpull.recorder.document import OutputDocumentRecorder
 from wpull.recorder.printing import PrintServerResponseRecorder
 from wpull.recorder.progress import ProgressRecorder
 from wpull.recorder.warc import WARCRecorder, WARCRecorderParams
+from wpull.recorder.zip import ZipRecorder
 from wpull.resmon import ResourceMonitor
 from wpull.robotstxt import RobotsTxtPool
 from wpull.scraper.base import DemuxDocumentScraper
@@ -160,6 +161,7 @@ class Builder(object):
             'WebProcessorFetchParams': WebProcessorFetchParams,
             'WebProcessorInstances': WebProcessorInstances,
             'YoutubeDlCoprocessor': YoutubeDlCoprocessor,
+            'ZipRecorder': ZipRecorder,
         })
         self._input_urls_temp_file = tempfile.NamedTemporaryFile(
             prefix='tmp-wpull-input_urls', dir=os.getcwd(),
@@ -800,6 +802,12 @@ class Builder(object):
                 with_headers=args.save_headers,
             ))
 
+        if args.zip:
+            recorders.append(self._factory.new(
+                'ZipRecorder',
+                args.zip
+            ))
+
         return self._factory.new('DemuxRecorder', recorders)
 
     def _populate_visits(self):
@@ -990,7 +998,7 @@ class Builder(object):
         '''
         args = self._args
 
-        if args.delete_after or args.output_document:
+        if args.delete_after or args.output_document or args.zip:
             return self._factory.new('FileWriter')  # is a NullWriter
 
         use_dir = (len(args.urls) != 1 or args.page_requisites

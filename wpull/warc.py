@@ -129,6 +129,12 @@ class WARCRecord(object):
 
         self.fields['Content-Length'] = str(content_length)
 
+    def get_head(self):
+        return self.VERSION.encode()+b'\r\n'+bytes(self.fields)+b'\r\n'
+
+    def get_tail(self):
+        return b'\r\n\r\n'
+
     def __iter__(self):
         '''Iterate the record as bytes.'''
         yield self.VERSION.encode()
@@ -138,7 +144,7 @@ class WARCRecord(object):
 
         with wpull.util.reset_file_offset(self.block_file):
             while True:
-                data = self.block_file.read(4096)
+                data = self.block_file.read(128*4096)
                 if data == b'':
                     break
                 yield data

@@ -5,9 +5,11 @@ import gettext
 import gzip
 import io
 import logging
+import os
 import os.path
 import re
 import shutil
+import stat
 
 import namedlist
 
@@ -90,6 +92,8 @@ class WARCRecorder(BaseRecorder):
         self._log_handler = None
         self._warc_filename = None
         self._cdx_filename = None
+        self._stream = False
+        self._stream_file = None
 
         self._check_journals_and_maybe_raise()
 
@@ -120,7 +124,17 @@ class WARCRecorder(BaseRecorder):
                 else:
                     break
         else:
-            self._warc_filename = self._generate_warc_filename(meta=meta)
+            if os.path.exists(self._prefix_filename):
+                self._warc_filename = self._prefix_filename
+                self._stream = stat.S_ISFIFO(os.stat(self._warc_filename).st_mode)
+                if self._stream:
+                    if self._params.compress:
+                        open_func = gzip.GzipFile
+                    else:
+                        open_func = open
+                    self._stream_file = open_func(self._warc_filename, 'wb')
+            else:
+                self._warc_filename = self._generate_warc_filename(meta=meta)
 
         _logger.debug(__('WARC file at {0}', self._warc_filename))
 
@@ -258,6 +272,11 @@ class WARCRecorder(BaseRecorder):
         _logger.debug(__('Writing WARC record {0}.',
                          record.fields['WARC-Type']))
 
+        if self._stream_file:
+            for data in record:
+                self._stream_file.write(data)
+            return
+
         if self._params.compress:
             open_func = gzip.GzipFile
         else:
@@ -304,6 +323,10 @@ class WARCRecorder(BaseRecorder):
 
     def close(self):
         '''Close the WARC file and clean up any logging handlers.'''
+        
+        if self._stream_file:
+            self._stream_file.close()
+
         if self._log_temp_file:
             self._log_handler.flush()
 
@@ -504,9 +527,10 @@ class WARCRecorderSessionDelegate(BaseWARCRecorderSession):
         self._child_session.response_control_data(data)
 
     def end_control(self, response, connection_closed=False):
-        self._child_session.end_control(
-            response, connection_closed=connection_closed
-        )
+        if self._child_session:
+            self._child_session.end_control(
+                response, connection_closed=connection_closed
+            )
 
 
 class HTTPWARCRecorderSession(BaseWARCRecorderSession):
@@ -565,24 +589,34 @@ class HTTPWARCRecorderSession(BaseWARCRecorderSession):
         record.fields['WARC-IP-Address'] = self._request.address[0]
         record.fields['WARC-Concurrent-To'] = self._request_record.fields[
             WARCRecord.WARC_RECORD_ID]
-        record.block_file = self._response_temp_file
+        if self._recorder._stream_file:
+            self._recorder._stream_file.write(record.get_head())
+        else:
+            record.block_file = self._response_temp_file
 
     def response_data(self, data):
-        self._response_temp_file.write(data)
+        if self._recorder._stream_file:
+            self._recorder._stream_file.write(data)
+        else:
+            self._response_temp_file.write(data)
 
     def response(self, response):
-        payload_offset = len(response.to_bytes())
 
-        self._response_record.block_file.seek(0)
-        self._recorder.set_length_and_maybe_checksums(
-            self._response_record,
-            payload_offset=payload_offset
-        )
+        if self._recorder._stream_file:
+            self._recorder._stream_file.write(self._response_record.get_tail())
+        else:
+            payload_offset = len(response.to_bytes())
 
-        if self._url_table is not None:
-            self._record_revisit(payload_offset)
+            self._response_record.block_file.seek(0)
+            self._recorder.set_length_and_maybe_checksums(
+                self._response_record,
+                payload_offset=payload_offset
+            )
 
-        self._recorder.write_record(self._response_record)
+            if self._url_table is not None:
+                self._record_revisit(payload_offset)
+
+            self._recorder.write_record(self._response_record)
 
     def _record_revisit(self, payload_offset):
         '''Record the revisit if possible.'''
